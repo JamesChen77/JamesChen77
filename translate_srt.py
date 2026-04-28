@@ -20,6 +20,8 @@ import re
 import os
 
 BATCH_SIZE = 40
+OLLAMA_BATCH_SIZE = 10  # smaller batches for local CPU
+OLLAMA_TIMEOUT = 300    # 5 minutes per batch
 TRANSLATOR = os.environ.get("TRANSLATOR", "google").lower()
 
 
@@ -108,7 +110,7 @@ def translate_ollama(texts: list[str]) -> list[str]:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT) as resp:
             data = json.loads(resp.read())
         return _parse_numbered_response(data["response"], texts)
     except Exception as e:
@@ -186,8 +188,13 @@ def main():
     translated_blocks = []
     total = len(blocks)
 
-    # Google translates one at a time (rate limit friendly); others batch
-    batch_size = 1 if TRANSLATOR == "google" else BATCH_SIZE
+    # Use smaller batches for local models; Google one at a time for rate limits
+    if TRANSLATOR == "google":
+        batch_size = 1
+    elif TRANSLATOR == "ollama":
+        batch_size = OLLAMA_BATCH_SIZE
+    else:
+        batch_size = BATCH_SIZE
 
     for start in range(0, total, batch_size):
         batch = blocks[start: start + batch_size]
