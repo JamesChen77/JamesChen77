@@ -10,6 +10,21 @@ ZH_SRT="video.zh.srt"
 OUTPUT_FILE="output_final.mp4"
 WHISPER_MODEL="${WHISPER_MODEL:-medium}"
 
+# Find the right Python — prefers Anaconda if present
+if [ -f "$HOME/anaconda3/bin/python" ]; then
+  PYTHON="$HOME/anaconda3/bin/python"
+elif [ -f "$HOME/miniconda3/bin/python" ]; then
+  PYTHON="$HOME/miniconda3/bin/python"
+elif command -v python3 &>/dev/null; then
+  PYTHON="python3"
+elif command -v python &>/dev/null; then
+  PYTHON="python"
+else
+  echo "ERROR: No Python found. Install Python or Anaconda first."
+  exit 1
+fi
+echo "  Using Python: $PYTHON"
+
 # Auto-detect a CJK font that exists on this machine
 if [ -f "/System/Library/Fonts/PingFang.ttc" ]; then
   CJK_FONT_PATH="/System/Library/Fonts/PingFang.ttc"
@@ -41,16 +56,16 @@ echo "======================================================"
 # ── Step 1: Verify dependencies ──────────────────────────
 echo ""
 echo "[Step 1] Checking dependencies..."
-for cmd in yt-dlp ffmpeg python3; do
+for cmd in yt-dlp ffmpeg; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "  ERROR: '$cmd' not found. Install it first."
     exit 1
   fi
 done
-python3 -c "import whisper" 2>/dev/null || { echo "  ERROR: openai-whisper not installed. Run: pip install openai-whisper"; exit 1; }
+"$PYTHON" -c "import whisper" 2>/dev/null || { echo "  ERROR: openai-whisper not installed. Run: pip install openai-whisper"; exit 1; }
 # Only require the Anthropic key if actually using Claude as the translator
 if [ "${TRANSLATOR:-google}" = "claude" ]; then
-  python3 -c "import anthropic" 2>/dev/null || { echo "  ERROR: anthropic not installed. Run: pip install anthropic"; exit 1; }
+  "$PYTHON" -c "import anthropic" 2>/dev/null || { echo "  ERROR: anthropic not installed. Run: pip install anthropic"; exit 1; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] && { echo "  ERROR: ANTHROPIC_API_KEY not set. Export it before running."; exit 1; }
 fi
 echo "  All dependencies OK."
@@ -75,7 +90,7 @@ echo "[Step 3] Transcribing with Whisper (model: $WHISPER_MODEL)..."
 if [ -f "$EN_SRT" ]; then
   echo "  $EN_SRT already exists, skipping transcription."
 else
-  python3 - <<'PYEOF'
+  "$PYTHON" - <<'PYEOF'
 import sys, whisper, os
 
 model_name = os.environ.get("WHISPER_MODEL", "medium")
@@ -92,7 +107,6 @@ result = model.transcribe(
     word_timestamps=False,
 )
 
-# Write SRT
 def format_timestamp(seconds):
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
@@ -118,15 +132,14 @@ echo "[Step 4] Translating to Simplified Chinese..."
 if [ -f "$ZH_SRT" ]; then
   echo "  $ZH_SRT already exists, skipping translation."
 else
-  python3 translate_srt.py "$EN_SRT" "$ZH_SRT"
+  "$PYTHON" translate_srt.py "$EN_SRT" "$ZH_SRT"
 fi
 
 # ── Step 5: Burn subtitles into video ────────────────────
 echo ""
 echo "[Step 5] Burning Chinese subtitles into video..."
 
-# Build ASS style with CJK font so ffmpeg renders Chinese correctly
-python3 - <<PYEOF
+"$PYTHON" - <<PYEOF
 import subprocess, os, sys
 
 zh_srt = "$ZH_SRT"
@@ -135,14 +148,12 @@ video_out = "$OUTPUT_FILE"
 font_path = "$CJK_FONT_PATH"
 font_name = "$FONT_NAME"
 
-# Convert SRT → ASS so we can embed font styling
 tmp_ass = "video.zh.ass"
 subprocess.run(
     ["ffmpeg", "-y", "-i", zh_srt, tmp_ass],
     check=True, capture_output=True
 )
 
-# Patch the ASS Style line to use the CJK font and bigger size
 with open(tmp_ass, "r", encoding="utf-8") as fh:
     ass_content = fh.read()
 ass_content = ass_content.replace("Arial", font_name).replace("Fontname: Arial", f"Fontname: {font_name}")
@@ -170,21 +181,18 @@ echo ""
 echo "[Step 6] Summary"
 echo "-----------------------------------"
 
-# Video duration
 DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv="p=0" "$OUTPUT_FILE" 2>/dev/null || echo "unknown")
 if [ "$DURATION" != "unknown" ]; then
-  DURATION_FMT=$(python3 -c "d=float('$DURATION'); print(f'{int(d//3600):02d}:{int((d%3600)//60):02d}:{int(d%60):02d}')")
+  DURATION_FMT=$("$PYTHON" -c "d=float('$DURATION'); print(f'{int(d//3600):02d}:{int((d%3600)//60):02d}:{int(d%60):02d}')")
   echo "  Output duration : $DURATION_FMT"
 fi
 
-# Line count of Chinese SRT
 LINE_COUNT=$(wc -l < "$ZH_SRT")
 echo "  Chinese SRT lines: $LINE_COUNT"
 
-# First 5 subtitle entries
 echo ""
 echo "  First 5 Chinese subtitle entries:"
-python3 - <<'PYEOF'
+"$PYTHON" - <<'PYEOF'
 entries = []
 with open("video.zh.srt", encoding="utf-8") as f:
     block = []
