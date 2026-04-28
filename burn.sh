@@ -35,7 +35,7 @@ echo "  Font file: $FONT_PATH"
 echo "  Burning into video (this takes a few minutes)..."
 ffmpeg -y \
   -i "$VIDEO_IN" \
-  -vf "subtitles=${ZH_SRT}:force_style='FontName=Noto Sans CJK SC,FontSize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Shadow=1'" \
+  -vf "subtitles=${ZH_SRT}" \
   -c:a copy \
   "$OUTPUT"
 
