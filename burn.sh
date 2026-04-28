@@ -5,7 +5,6 @@ set -euo pipefail
 VIDEO_IN="video.mp4"
 ZH_SRT="video.zh.srt"
 OUTPUT="output_final.mp4"
-TMP_ASS="video.zh.ass"
 
 echo "======================================================"
 echo " Burning Chinese Subtitles"
@@ -15,42 +14,36 @@ echo "======================================================"
 [ ! -f "$VIDEO_IN" ] && { echo "ERROR: video.mp4 not found in this folder."; exit 1; }
 [ ! -f "$ZH_SRT"  ] && { echo "ERROR: video.zh.srt not found in this folder."; exit 1; }
 
-# Find CJK font
+# Find CJK font path
 if [ -f "$HOME/Library/Fonts/NotoSansCJK.ttc" ]; then
-  FONT_PATH="$HOME/Library/Fonts/NotoSansCJK.ttc"; FONT_NAME="Noto Sans CJK SC"
+  FONT_PATH="$HOME/Library/Fonts/NotoSansCJK.ttc"
 elif [ -f "/Library/Fonts/NotoSansCJK.ttc" ]; then
-  FONT_PATH="/Library/Fonts/NotoSansCJK.ttc"; FONT_NAME="Noto Sans CJK SC"
+  FONT_PATH="/Library/Fonts/NotoSansCJK.ttc"
 elif [ -f "/System/Library/Fonts/PingFang.ttc" ]; then
-  FONT_PATH="/System/Library/Fonts/PingFang.ttc"; FONT_NAME="PingFang SC"
+  FONT_PATH="/System/Library/Fonts/PingFang.ttc"
 elif [ -f "C:/Windows/Fonts/msyh.ttc" ]; then
-  FONT_PATH="C:/Windows/Fonts/msyh.ttc"; FONT_NAME="Microsoft YaHei"
+  FONT_PATH="C:/Windows/Fonts/msyh.ttc"
 elif [ -f "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc" ]; then
-  FONT_PATH="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"; FONT_NAME="WenQuanYi Zen Hei"
+  FONT_PATH="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 else
   echo "ERROR: No CJK font found. Run: brew install font-noto-sans-cjk"
   exit 1
 fi
-echo "  Font: $FONT_NAME"
+echo "  Font file: $FONT_PATH"
 
-# Convert SRT to ASS and apply CJK font
-echo "  Converting subtitles..."
-ffmpeg -y -i "$ZH_SRT" "$TMP_ASS" 2>/dev/null
-sed -i '' "s/Arial/$FONT_NAME/g" "$TMP_ASS" 2>/dev/null || sed -i "s/Arial/$FONT_NAME/g" "$TMP_ASS"
-
-# Burn into video
+# Burn subtitles directly from SRT using the font file path
 echo "  Burning into video (this takes a few minutes)..."
 ffmpeg -y \
   -i "$VIDEO_IN" \
-  -vf "ass=${TMP_ASS}" \
+  -vf "subtitles=${ZH_SRT}:force_style='FontName=Noto Sans CJK SC,FontSize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Shadow=1'" \
   -c:a copy \
-  "$OUTPUT" 2>&1 | grep -E "frame=|Error|error" | tail -5
+  "$OUTPUT"
 
 echo ""
 echo "======================================================"
 echo " Done! Output saved as: output_final.mp4"
 echo "======================================================"
 
-# Quick summary
 DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv="p=0" "$OUTPUT" 2>/dev/null || echo "")
 if [ -n "$DURATION" ]; then
   python3 -c "d=float('$DURATION'); print(f'  Duration: {int(d//3600):02d}:{int((d%3600)//60):02d}:{int(d%60):02d}')" 2>/dev/null || true
