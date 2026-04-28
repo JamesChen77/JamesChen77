@@ -10,15 +10,13 @@ ZH_SRT="video.zh.srt"
 OUTPUT_FILE="output_final.mp4"
 WHISPER_MODEL="${WHISPER_MODEL:-medium}"
 
-# Find the right Python — prefers Anaconda if present
-if [ -f "$HOME/anaconda3/bin/python" ]; then
-  PYTHON="$HOME/anaconda3/bin/python"
-elif [ -f "$HOME/miniconda3/bin/python" ]; then
-  PYTHON="$HOME/miniconda3/bin/python"
+# Find the right Python — respects active conda/virtual environment first
+if command -v python &>/dev/null && python -c "import sys; sys.exit(0 if sys.prefix != sys.base_prefix or 'conda' in sys.version or 'Continuum' in sys.version else 1)" 2>/dev/null; then
+  PYTHON="$(command -v python)"
 elif command -v python3 &>/dev/null; then
-  PYTHON="python3"
+  PYTHON="$(command -v python3)"
 elif command -v python &>/dev/null; then
-  PYTHON="python"
+  PYTHON="$(command -v python)"
 else
   echo "ERROR: No Python found. Install Python or Anaconda first."
   exit 1
