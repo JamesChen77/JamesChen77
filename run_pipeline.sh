@@ -10,8 +10,29 @@ ZH_SRT="video.zh.srt"
 OUTPUT_FILE="output_final.mp4"
 WHISPER_MODEL="${WHISPER_MODEL:-medium}"
 
-CJK_FONT_PATH="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
-FONT_NAME="WenQuanYi Zen Hei"
+# Auto-detect a CJK font that exists on this machine
+if [ -f "/System/Library/Fonts/PingFang.ttc" ]; then
+  CJK_FONT_PATH="/System/Library/Fonts/PingFang.ttc"
+  FONT_NAME="PingFang SC"
+elif [ -f "/Library/Fonts/Arial Unicode MS.ttf" ]; then
+  CJK_FONT_PATH="/Library/Fonts/Arial Unicode MS.ttf"
+  FONT_NAME="Arial Unicode MS"
+elif [ -f "C:/Windows/Fonts/msyh.ttc" ]; then
+  CJK_FONT_PATH="C:/Windows/Fonts/msyh.ttc"
+  FONT_NAME="Microsoft YaHei"
+elif [ -f "C:/Windows/Fonts/simhei.ttf" ]; then
+  CJK_FONT_PATH="C:/Windows/Fonts/simhei.ttf"
+  FONT_NAME="SimHei"
+elif [ -f "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc" ]; then
+  CJK_FONT_PATH="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+  FONT_NAME="WenQuanYi Zen Hei"
+else
+  echo "  ERROR: No CJK font found. Install one:"
+  echo "    Mac:     already included (PingFang)"
+  echo "    Windows: already included (Microsoft YaHei)"
+  echo "    Linux:   sudo apt install fonts-wqy-zenhei"
+  exit 1
+fi
 
 echo "======================================================"
 echo " Chinese Subtitle Pipeline"
@@ -27,8 +48,11 @@ for cmd in yt-dlp ffmpeg python3; do
   fi
 done
 python3 -c "import whisper" 2>/dev/null || { echo "  ERROR: openai-whisper not installed. Run: pip install openai-whisper"; exit 1; }
-python3 -c "import anthropic" 2>/dev/null || { echo "  ERROR: anthropic not installed. Run: pip install anthropic"; exit 1; }
-[ -z "${ANTHROPIC_API_KEY:-}" ] && { echo "  ERROR: ANTHROPIC_API_KEY not set. Export it before running."; exit 1; }
+# Only require the Anthropic key if actually using Claude as the translator
+if [ "${TRANSLATOR:-google}" = "claude" ]; then
+  python3 -c "import anthropic" 2>/dev/null || { echo "  ERROR: anthropic not installed. Run: pip install anthropic"; exit 1; }
+  [ -z "${ANTHROPIC_API_KEY:-}" ] && { echo "  ERROR: ANTHROPIC_API_KEY not set. Export it before running."; exit 1; }
+fi
 echo "  All dependencies OK."
 
 # ── Step 2: Download video ────────────────────────────────
