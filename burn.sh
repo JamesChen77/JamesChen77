@@ -41,7 +41,7 @@ sed -i '' "s/Arial/$FONT_NAME/g" "$TMP_ASS" 2>/dev/null || sed -i "s/Arial/$FONT
 echo "  Burning into video (this takes a few minutes)..."
 ffmpeg -y \
   -i "$VIDEO_IN" \
-  -vf "ass=${TMP_ASS}:fontsdir=$(dirname "$FONT_PATH")" \
+  -vf "ass=${TMP_ASS}" \
   -c:a copy \
   "$OUTPUT" 2>&1 | grep -E "frame=|Error|error" | tail -5
 
