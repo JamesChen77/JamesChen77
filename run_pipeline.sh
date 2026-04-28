@@ -26,7 +26,13 @@ fi
 echo "  Using Python: $PYTHON"
 
 # Auto-detect a CJK font that exists on this machine
-if [ -f "/System/Library/Fonts/PingFang.ttc" ]; then
+if [ -f "$HOME/Library/Fonts/NotoSansCJK.ttc" ]; then
+  CJK_FONT_PATH="$HOME/Library/Fonts/NotoSansCJK.ttc"
+  FONT_NAME="Noto Sans CJK SC"
+elif [ -f "/Library/Fonts/NotoSansCJK.ttc" ]; then
+  CJK_FONT_PATH="/Library/Fonts/NotoSansCJK.ttc"
+  FONT_NAME="Noto Sans CJK SC"
+elif [ -f "/System/Library/Fonts/PingFang.ttc" ]; then
   CJK_FONT_PATH="/System/Library/Fonts/PingFang.ttc"
   FONT_NAME="PingFang SC"
 elif [ -f "/Library/Fonts/Arial Unicode MS.ttf" ]; then
