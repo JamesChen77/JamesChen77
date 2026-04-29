@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# subtitle — Add Chinese subtitles to any YouTube video
+#
+# Usage:
+#   subtitle <youtube_url>              (default font size: 28)
+#   subtitle <youtube_url> <font_size>  (e.g. 36 for TV)
+#
+# Example:
+#   subtitle https://www.youtube.com/watch?v=ABC123
+#   subtitle https://www.youtube.com/watch?v=ABC123 36
+
+set -euo pipefail
+
+URL="${1:-}"
+FONT_SIZE="${2:-28}"
+
+if [ -z "$URL" ]; then
+  echo "Usage: subtitle <youtube_url> [font_size]"
+  echo ""
+  echo "Examples:"
+  echo "  subtitle https://www.youtube.com/watch?v=ABC123"
+  echo "  subtitle https://www.youtube.com/watch?v=ABC123 36"
+  exit 1
+fi
+
+# ── Activate the conda env that has whisper + yt-dlp ─────────────────────
+if [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+  source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+  source "$HOME/miniconda3/etc/profile.d/conda.sh"
+fi
+conda activate subtitles 2>/dev/null || {
+  echo "ERROR: conda env 'subtitles' not found. Run setup first."
+  exit 1
+}
+
+# ── Make a unique folder for this video ──────────────────────────────────
+VIDEO_ID=$(echo "$URL" | sed -nE 's/.*[?&]v=([^&]{11}).*/\1/p')
+[ -z "$VIDEO_ID" ] && VIDEO_ID=$(echo "$URL" | sed -nE 's|.*youtu\.be/([^?]{11}).*|\1|p')
+[ -z "$VIDEO_ID" ] && VIDEO_ID="video_$(date +%Y%m%d_%H%M%S)"
+
+PROJECT_DIR="$HOME/Desktop/subtitle_projects/$VIDEO_ID"
+mkdir -p "$PROJECT_DIR"
+cd "$PROJECT_DIR"
+
+echo "======================================================"
+echo " Subtitle Wizard"
+echo "======================================================"
+echo "  Project folder: $PROJECT_DIR"
+echo "  Font size:      $FONT_SIZE"
+echo ""
+
+# ── Step 1: Download ─────────────────────────────────────────────────────
+if [ -f "video.mp4" ]; then
+  echo "[1/4] Video already downloaded, skipping."
+else
+  echo "[1/4] Downloading video..."
+  yt-dlp --no-check-certificate \
+    -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+    --merge-output-format mp4 \
+    -o "video.mp4" \
+    "$URL"
+fi
+
+# ── Step 2: Transcribe with Whisper ──────────────────────────────────────
+if [ -f "video.en.srt" ]; then
+  echo "[2/4] Transcript already exists, skipping."
+else
+  echo "[2/4] Transcribing audio with Whisper (this takes 10-30 minutes)..."
+  python <<'PYEOF'
+import whisper
+model = whisper.load_model('medium')
+result = model.transcribe('video.mp4', language='en')
+
+def fmt(s):
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = int(s % 60)
+    ms = int((s - int(s)) * 1000)
+    return f'{h:02d}:{m:02d}:{sec:02d},{ms:03d}'
+
+with open('video.en.srt', 'w', encoding='utf-8') as f:
+    for i, seg in enumerate(result['segments'], 1):
+        f.write(f"{i}\n{fmt(seg['start'])} --> {fmt(seg['end'])}\n{seg['text'].strip()}\n\n")
+
+print(f"  Done! {len(result['segments'])} subtitle segments saved to video.en.srt")
+PYEOF
+fi
+
+# ── Step 3: Translation (manual, via claude.ai) ──────────────────────────
+if [ -f "video.zh.srt" ]; then
+  echo "[3/4] Chinese translation already exists, skipping."
+else
+  echo ""
+  echo "------------------------------------------------------"
+  echo "[3/4] TRANSLATION STEP — YOUR TURN"
+  echo "------------------------------------------------------"
+  echo ""
+  echo "  1. A Finder window will open with your project folder."
+  echo "  2. claude.ai will open in your browser."
+  echo "  3. Drag 'video.en.srt' from Finder into a new Claude chat."
+  echo "  4. Send this message:"
+  echo ""
+  echo '     "Translate every text line in this SRT to natural'
+  echo '      Simplified Chinese. Keep all timestamps and numbers'
+  echo '      exactly as-is. Output the complete SRT file only."'
+  echo ""
+  echo "  5. Copy Claude's full response."
+  echo "  6. Save it as 'video.zh.srt' in the project folder."
+  echo "     (In Finder, right-click > New > paste, name it video.zh.srt)"
+  echo "     OR use the command shown below:"
+  echo ""
+  echo "     pbpaste > '$PROJECT_DIR/video.zh.srt'"
+  echo ""
+  echo "  7. Come back here and press ENTER."
+  echo ""
+
+  # Open Finder and Claude.ai automatically
+  open "$PROJECT_DIR"
+  open "https://claude.ai"
+
+  read -r -p "Press ENTER once video.zh.srt is in the project folder..."
+
+  if [ ! -f "video.zh.srt" ]; then
+    echo "ERROR: video.zh.srt still not found. Add it to the folder and re-run:"
+    echo "       subtitle '$URL' $FONT_SIZE"
+    exit 1
+  fi
+fi
+
+# ── Step 4: Burn subtitles ───────────────────────────────────────────────
+OUTPUT="output_final_${FONT_SIZE}.mp4"
+echo ""
+echo "[4/4] Burning Chinese subtitles into video (a few minutes)..."
+ffmpeg -y -i video.mp4 \
+  -vf "subtitles=video.zh.srt:force_style='FontSize=${FONT_SIZE}'" \
+  -c:a copy \
+  "$OUTPUT"
+
+echo ""
+echo "======================================================"
+echo " ALL DONE!"
+echo "======================================================"
+echo "  Your video: $PROJECT_DIR/$OUTPUT"
+open "$PROJECT_DIR"
