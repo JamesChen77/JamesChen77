@@ -51,18 +51,21 @@ echo "  Font size:      $FONT_SIZE"
 echo ""
 
 # ── Step 1: Download ─────────────────────────────────────────────────────
+# Force H.264 (avc1) — easier to process, smaller files, no AV1 decode overhead
 if [ -f "video.mp4" ]; then
   echo "[1/4] Video already downloaded, skipping."
 else
   echo "[1/4] Downloading video..."
   yt-dlp --no-check-certificate \
-    -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+    -f "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
     --merge-output-format mp4 \
     -o "video.mp4" \
     "$URL"
 fi
 
 # ── Step 2: Transcribe with Whisper ──────────────────────────────────────
+# condition_on_previous_text=False prevents timestamp drift on long videos.
+# Without it, errors compound and subtitles drift out of sync past minute 30+.
 if [ -f "video.en.srt" ]; then
   echo "[2/4] Transcript already exists, skipping."
 else
@@ -70,7 +73,15 @@ else
   python <<'PYEOF'
 import whisper
 model = whisper.load_model('medium')
-result = model.transcribe('video.mp4', language='en')
+result = model.transcribe(
+    'video.mp4',
+    language='en',
+    condition_on_previous_text=False,
+    no_speech_threshold=0.6,
+    compression_ratio_threshold=2.4,
+    temperature=(0.0, 0.2, 0.4),
+    verbose=False,
+)
 
 def fmt(s):
     h = int(s // 3600)
@@ -132,18 +143,36 @@ fi
 OUTPUT="output_final_${FONT_SIZE}.mp4"
 echo ""
 echo "[4/4] Burning Chinese subtitles into video (a few minutes)..."
+
+# Detect source frame rate so we can lock the output to the same constant rate
+SRC_FPS=$(ffprobe -v 0 -of csv=p=0 -select_streams v:0 -show_entries stream=r_frame_rate video.mp4 | head -1)
+SRC_FPS_NUM=$(echo "$SRC_FPS" | awk -F'/' '{ if ($2) printf "%.3f", $1/$2; else print $1 }')
+echo "  Source frame rate: ${SRC_FPS_NUM} fps — locking output to same."
+
 ffmpeg -y \
   -fflags +genpts \
   -i video.mp4 \
-  -vf "subtitles=video.zh.srt:force_style='FontSize=${FONT_SIZE}'" \
+  -vf "subtitles=video.zh.srt:force_style='FontSize=${FONT_SIZE}',fps=${SRC_FPS_NUM}" \
   -c:v libx264 \
   -preset fast \
-  -crf 23 \
+  -crf 20 \
+  -pix_fmt yuv420p \
   -c:a aac \
-  -b:a 128k \
+  -b:a 192k \
+  -ar 44100 \
+  -vsync cfr \
+  -async 1 \
   -max_muxing_queue_size 9999 \
   -movflags +faststart \
   "$OUTPUT"
+
+# Verify output
+echo ""
+echo "  Verifying output..."
+OUT_DUR=$(ffprobe -v 0 -of csv=p=0 -show_entries format=duration "$OUTPUT")
+SRC_DUR=$(ffprobe -v 0 -of csv=p=0 -show_entries format=duration video.mp4)
+echo "  Source duration: ${SRC_DUR}s"
+echo "  Output duration: ${OUT_DUR}s"
 
 echo ""
 echo "======================================================"
