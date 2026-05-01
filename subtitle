@@ -132,9 +132,17 @@ fi
 OUTPUT="output_final_${FONT_SIZE}.mp4"
 echo ""
 echo "[4/4] Burning Chinese subtitles into video (a few minutes)..."
-ffmpeg -y -i video.mp4 \
+ffmpeg -y \
+  -fflags +genpts \
+  -i video.mp4 \
   -vf "subtitles=video.zh.srt:force_style='FontSize=${FONT_SIZE}'" \
-  -c:a copy \
+  -c:v libx264 \
+  -preset fast \
+  -crf 23 \
+  -c:a aac \
+  -b:a 128k \
+  -max_muxing_queue_size 9999 \
+  -movflags +faststart \
   "$OUTPUT"
 
 echo ""
